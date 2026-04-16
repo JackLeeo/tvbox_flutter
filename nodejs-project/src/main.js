@@ -1,310 +1,102 @@
-const { createServer } = require('http');
+const {createServer} = require('http');
 const axios = require('axios');
-const { builtinModules } = require('module');
-const vm = require('vm');
-const fs = require('fs');
-const path = require('path');
+const {builtinModules} = require('module');
 
-// 暴露所有Node.js内置模块到全局
+// 暴露所有Node.js内置模块到全局（原项目逻辑）
 builtinModules.forEach(mod => {
-  if (!['trace_events', 'inspector'].includes(mod)) {
+  if (!['trace_events'].includes(mod)) {
     globalThis[mod] = require(mod);
   }
 });
 
-// 全局变量
-let currentSpider = null;
-let cloudDrives = new Map();
-let liveChannels = [];
+// 全局变量（原项目逻辑）
+let sourceModule;
+let nativeServerPort = 0;
+let messageQueue = [];
+let isReady = false;
 
-// CatVodOpen 兼容层
-globalThis.catServerFactory = (handler) => {
-  const server = createServer(handler);
-  server.listen(0, '127.0.0.1', () => {
-    console.log(`CatVod server running on port ${server.address().port}`);
+// CatVodOpen 兼容层（原项目逻辑，100% 保留）
+globalThis.catServerFactory = handle => {
+  let port = 0;
+  const server = createServer((req, res) => {
+    handle(req, res);
+  });
+  server.on('listening', () => {
+    port = server.address().port;
+    axios.get(`http://127.0.0.1:${globalThis.catDartServerPort()}/onCatPawOpenPort?port=${port}`);
+    console.log('Run on ' + port);
+  });
+  server.on('close', () => {
+    console.log('Close on ' + port);
   });
   return server;
 };
 
-// 加载爬虫脚本
-async function loadSpider(url) {
+globalThis.catDartServerPort = () => {
+  return nativeServerPort;
+};
+
+// 加载Spider脚本（原项目逻辑，100% 保留）
+function loadScript(path) {
   try {
-    console.log('Loading spider from:', url);
-    
-    // 停止之前的爬虫
-    if (currentSpider && currentSpider.stop) {
-      await currentSpider.stop();
-    }
-    
-    // 下载并执行爬虫脚本
-    const response = await axios.get(url, { timeout: 10000 });
-    const scriptCode = response.data;
-    
-    // 创建沙箱环境
-    const sandbox = {
-      ...globalThis,
-      console: console,
-      require: require,
-      module: module,
-      exports: {},
-    };
-    
-    // 执行脚本
-    vm.runInNewContext(scriptCode, sandbox, {
-      filename: 'spider.js',
-      timeout: 5000,
-    });
-    
-    // 获取爬虫实例
-    currentSpider = sandbox.exports.default || sandbox.exports;
-    
-    if (!currentSpider || !currentSpider.home) {
-      throw new Error('Invalid spider script');
-    }
-    
-    console.log('Spider loaded successfully');
-    return true;
+    const indexJSPath = `${path}/index.js`;
+    const indexConfigJSPath = `${path}/index.config.js`;
+    delete require.cache[require.resolve(indexJSPath)];
+    delete require.cache[require.resolve(indexConfigJSPath)];
+    sourceModule = require(indexJSPath);
+    const config = require(indexConfigJSPath);
+    sourceModule.start(config.default || config);
   } catch (e) {
-    console.error('Failed to load spider:', e);
-    currentSpider = null;
-    return false;
+    console.log(e);
   }
 }
 
-// 网盘解析器
-class CloudDriveParser {
-  constructor(type, config) {
-    this.type = type;
-    this.config = config;
-  }
-  
-  async listFiles(path) {
-    switch (this.type) {
-      case 'aliyun':
-        return await this.listAliyunFiles(path);
-      case 'baidu':
-        return await this.listBaiduFiles(path);
-      case 'quark':
-        return await this.listQuarkFiles(path);
-      default:
-        throw new Error(`Unsupported cloud drive type: ${this.type}`);
-    }
-  }
-  
-  async getPlayUrl(fileId) {
-    switch (this.type) {
-      case 'aliyun':
-        return await this.getAliyunPlayUrl(fileId);
-      case 'baidu':
-        return await this.getBaiduPlayUrl(fileId);
-      case 'quark':
-        return await this.getQuarkPlayUrl(fileId);
-      default:
-        throw new Error(`Unsupported cloud drive type: ${this.type}`);
-    }
-  }
-  
-  // 阿里云盘实现
-  async listAliyunFiles(path) {
-    const response = await axios.post('https://api.aliyundrive.com/adrive/v3/file/list', {
-      drive_id: this.config.driveId,
-      parent_file_id: path || 'root',
-      limit: 100,
-    }, {
-      headers: {
-        'Authorization': `Bearer ${this.config.token}`,
-        'Content-Type': 'application/json',
-      },
-    });
-    
-    return response.data.items.map(item => ({
-      id: item.file_id,
-      name: item.name,
-      type: item.type === 'folder' ? 'folder' : 'file',
-      size: item.size,
-      updatedAt: item.updated_at,
-    }));
-  }
-  
-  async getAliyunPlayUrl(fileId) {
-    const response = await axios.post('https://api.aliyundrive.com/v2/file/get_download_url', {
-      drive_id: this.config.driveId,
-      file_id: fileId,
-    }, {
-      headers: {
-        'Authorization': `Bearer ${this.config.token}`,
-        'Content-Type': 'application/json',
-      },
-    });
-    
-    return response.data.url;
-  }
-  
-  // 百度网盘实现
-  async listBaiduFiles(path) {
-    const response = await axios.get('https://pan.baidu.com/rest/2.0/xpan/file', {
-      params: {
-        method: 'list',
-        dir: path || '/',
-        limit: 100,
-      },
-      headers: {
-        'User-Agent': 'pan.baidu.com',
-        'Cookie': this.config.cookie,
-      },
-    });
-    
-    return response.data.list.map(item => ({
-      id: item.fs_id.toString(),
-      name: item.server_filename,
-      type: item.isdir === 1 ? 'folder' : 'file',
-      size: item.size,
-      updatedAt: new Date(item.server_mtime * 1000).toISOString(),
-    }));
-  }
-  
-  async getBaiduPlayUrl(fileId) {
-    const response = await axios.get('https://pan.baidu.com/rest/2.0/xpan/multimedia', {
-      params: {
-        method: 'download',
-        fsids: `[${fileId}]`,
-      },
-      headers: {
-        'User-Agent': 'pan.baidu.com',
-        'Cookie': this.config.cookie,
-      },
-      maxRedirects: 0,
-      validateStatus: status => status === 302,
-    });
-    
-    return response.headers.location;
-  }
-  
-  // 夸克网盘实现
-  async listQuarkFiles(path) {
-    const response = await axios.post('https://drive-pc.quark.cn/1/clouddrive/file/sort', {
-      pdir_fid: path || '0',
-      page: 1,
-      size: 100,
-    }, {
-      headers: {
-        'Cookie': this.config.cookie,
-        'Content-Type': 'application/json',
-      },
-    });
-    
-    return response.data.data.list.map(item => ({
-      id: item.fid,
-      name: item.file_name,
-      type: item.dir === true ? 'folder' : 'file',
-      size: item.size,
-      updatedAt: item.updated_at,
-    }));
-  }
-  
-  async getQuarkPlayUrl(fileId) {
-    const response = await axios.post('https://drive-pc.quark.cn/1/clouddrive/file/download', {
-      fid: fileId,
-    }, {
-      headers: {
-        'Cookie': this.config.cookie,
-        'Content-Type': 'application/json',
-      },
-    });
-    
-    return response.data.data.download_url;
-  }
-}
-
-// 处理请求
-async function handleRequest(action, params) {
-  switch (action) {
-    // 数据源API
-    case 'loadSource':
-      return await loadSpider(params.url);
-      
-    case 'getHomeContent':
-      if (!currentSpider) throw new Error('No spider loaded');
-      return await currentSpider.home();
-      
-    case 'getCategoryContent':
-      if (!currentSpider) throw new Error('No spider loaded');
-      return await currentSpider.category(params.categoryId, params.page || 1);
-      
-    case 'getVideoDetail':
-      if (!currentSpider) throw new Error('No spider loaded');
-      return await currentSpider.detail(params.videoId);
-      
-    case 'getPlayUrl':
-      if (!currentSpider) throw new Error('No spider loaded');
-      return await currentSpider.play(params.playId);
-      
-    case 'search':
-      if (!currentSpider) throw new Error('No spider loaded');
-      return await currentSpider.search(params.keyword);
-      
-    // 网盘API
-    case 'addCloudDrive':
-      const driveId = Date.now().toString();
-      cloudDrives.set(driveId, new CloudDriveParser(params.type, params.config));
-      return driveId;
-      
-    case 'listCloudDriveFiles':
-      const drive = cloudDrives.get(params.driveId);
-      if (!drive) throw new Error('Cloud drive not found');
-      return await drive.listFiles(params.path);
-      
-    case 'getCloudDrivePlayUrl':
-      const drive2 = cloudDrives.get(params.driveId);
-      if (!drive2) throw new Error('Cloud drive not found');
-      return await drive2.getPlayUrl(params.fileId);
-      
-    // 直播API
-    case 'getLiveChannels':
-      return liveChannels;
-      
-    case 'getLivePlayUrl':
-      const channel = liveChannels.find(c => c.id === params.channelId);
-      if (!channel) throw new Error('Channel not found');
-      return channel.url;
-      
-    default:
-      throw new Error(`Unknown action: ${action}`);
-  }
-}
-
-// 消息处理
-process._linkedBinding('myaddon').registerCallback(async (msg) => {
-  try {
-    const data = JSON.parse(msg);
-    const { messageId, action, params } = data;
-    
-    console.log('Received request:', action);
-    
-    try {
-      const result = await handleRequest(action, params);
-      
-      // 发送响应
-      const response = JSON.stringify({
-        messageId: messageId,
-        result: result,
-      });
-      
-      process._linkedBinding('myaddon').sendMessageToNative(response);
-    } catch (e) {
-      console.error('Request error:', e);
-      
-      // 发送错误响应
-      const response = JSON.stringify({
-        messageId: messageId,
-        error: e.message,
-      });
-      
-      process._linkedBinding('myaddon').sendMessageToNative(response);
-    }
-  } catch (e) {
-    console.error('Message parsing error:', e);
-  }
+// 全局异常捕获（原项目逻辑）
+process.on('uncaughtException', function (err) {
+  console.error('Caught exception: ' + err);
 });
 
-console.log('Node.js runtime initialized');
+// 发送消息到原生（适配NodeMobile）
+function sendMessageToNative(message) {
+  if (isReady) {
+    globalThis.sendToNative(message);
+  } else {
+    messageQueue.push(message);
+  }
+}
+
+// 处理来自原生的消息（适配NodeMobile）
+function handleMessageFromNative(message) {
+  console.log('Message from Native:', message);
+  try {
+    const data = JSON.parse(message);
+    switch (data.action) {
+      case 'run':
+        await sourceModule?.stop?.();
+        loadScript(data.path);
+        break;
+      case 'nativeServerPort':
+        nativeServerPort = data.port;
+        break;
+      default:
+        break;
+    }
+  } catch (e) {
+    console.log(e);
+  }
+}
+
+// NodeMobile框架初始化
+globalThis.onNativeReady = () => {
+  console.log('Node.js runtime initialized');
+  isReady = true;
+  // 处理队列消息
+  while (messageQueue.length > 0) {
+    sendMessageToNative(messageQueue.shift());
+  }
+  // 通知原生就绪（原项目逻辑）
+  sendMessageToNative('ready');
+};
+
+// 监听原生消息（NodeMobile标准API）
+globalThis.onMessageFromNative = handleMessageFromNative;
