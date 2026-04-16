@@ -16,6 +16,15 @@ class SourceConfig {
     this.isEnabled = true,
   });
 
+  factory SourceConfig.empty() {
+    return SourceConfig(
+      id: '',
+      name: '',
+      url: '',
+      isEnabled: false,
+    );
+  }
+
   SourceConfig copyWith({
     String? id,
     String? name,
