@@ -6,12 +6,6 @@ import 'package:tvbox_flutter/ui/player/vlc_player.dart';
 import 'package:tvbox_flutter/ui/player/system_player.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 
-enum PlayerType {
-  vlc,
-  system,
-  // exo, // 移除Exo支持
-}
-
 class VideoPlayerPage extends StatefulWidget {
   final String playUrl;
   final String title;
@@ -53,10 +47,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 
   Future<void> _loadVideo() async {
     setState(() => _isLoading = true);
-    
-    // 模拟加载时间
     await Future.delayed(const Duration(milliseconds: 500));
-    
     setState(() => _isLoading = false);
   }
 
@@ -65,22 +56,19 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       _currentPlayer = player;
       _isLoading = true;
     });
-    
     _loadVideo();
   }
 
   Future<void> _changeEpisode(int index) async {
     if (widget.videoDetail == null) return;
-    
     setState(() {
       _currentEpisodeIndex = index;
       _isLoading = true;
     });
-    
     final episode = widget.videoDetail!.episodes[index];
     final source = episode.sources[_currentSourceIndex];
     final playUrl = await Provider.of<PlayerProvider>(context, listen: false).getPlayUrl(source.url);
-    
+    if (!mounted) return;
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
@@ -97,16 +85,14 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 
   Future<void> _changeSource(int index) async {
     if (widget.videoDetail == null) return;
-    
     setState(() {
       _currentSourceIndex = index;
       _isLoading = true;
     });
-    
     final episode = widget.videoDetail!.episodes[_currentEpisodeIndex];
     final source = episode.sources[index];
     final playUrl = await Provider.of<PlayerProvider>(context, listen: false).getPlayUrl(source.url);
-    
+    if (!mounted) return;
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
@@ -183,12 +169,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                 PopupMenuButton<PlayerType>(
                   icon: const Icon(Icons.settings),
                   onSelected: _changePlayer,
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
                       value: PlayerType.vlc,
                       child: Text('VLC播放器'),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: PlayerType.system,
                       child: Text('系统播放器'),
                     ),
@@ -219,9 +205,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                 child: Slider(
                   value: _currentPosition,
                   max: _duration,
-                  onChanged: (value) {
-                    // 实现进度条拖动
-                  },
+                  onChanged: (value) {},
                   activeColor: Colors.blue,
                   inactiveColor: Colors.white30,
                 ),
@@ -247,9 +231,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                   color: Colors.white,
                   size: 48,
                 ),
-                onPressed: () {
-                  // 实现播放/暂停
-                },
+                onPressed: () {},
               ),
               IconButton(
                 icon: const Icon(Icons.skip_next, color: Colors.white),
@@ -260,9 +242,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
               ),
               IconButton(
                 icon: const Icon(Icons.fullscreen, color: Colors.white),
-                onPressed: () {
-                  // 实现全屏切换
-                },
+                onPressed: () {},
               ),
             ],
           ),
@@ -310,13 +290,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 
   String _formatDuration(double milliseconds) {
     final duration = Duration(milliseconds: milliseconds.toInt());
-    final hours = duration.inHours;
     final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
     final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
-    if (hours > 0) {
-      return '$hours:$minutes:$seconds';
-    } else {
-      return '$minutes:$seconds';
-    }
+    return '${duration.inHours}:$minutes:$seconds';
   }
 }
