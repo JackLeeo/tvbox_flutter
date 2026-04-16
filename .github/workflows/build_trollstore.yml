@@ -36,6 +36,9 @@ jobs:
       - name: Install CocoaPods
         run: gem install cocoapods
 
+      - name: Install xcodeproj (Ruby gem)
+        run: gem install xcodeproj
+
       - name: Verify NodeMobile Framework (from LFS)
         run: |
           echo "=== 验证 Git LFS 中的 NodeMobile 框架 ==="
@@ -67,6 +70,43 @@ jobs:
           flutter pub get
           echo "=== 生成 JSON 序列化代码 ==="
           dart run build_runner build --delete-conflicting-outputs
+
+      - name: Add NodeJSBridge.swift to Xcode project
+        run: |
+          ruby <<-'EOF'
+          require 'xcodeproj'
+
+          project_path = 'ios/Runner.xcodeproj'
+          file_to_add = 'Runner/NodeJSBridge.swift'
+
+          project = Xcodeproj::Project.open(project_path)
+          runner_target = project.targets.find { |t| t.name == 'Runner' }
+          unless runner_target
+            puts "❌ Runner target not found"
+            exit 1
+          end
+
+          main_group = project.main_group
+          runner_group = main_group.groups.find { |g| g.name == 'Runner' || g.path == 'Runner' }
+          unless runner_group
+            puts "❌ Runner group not found"
+            exit 1
+          end
+
+          existing_file = runner_group.files.find { |f| f.path == 'NodeJSBridge.swift' }
+          if existing_file
+            runner_target.source_build_phase.add_file_reference(existing_file) unless runner_target.source_build_phase.files.any? { |bf| bf.file_ref == existing_file }
+            puts "✅ NodeJSBridge.swift already exists, ensuring target membership"
+          else
+            file_ref = runner_group.new_file(File.join(Dir.pwd, 'ios', file_to_add))
+            runner_target.source_build_phase.add_file_reference(file_ref)
+            puts "✅ Added NodeJSBridge.swift to project"
+          end
+
+          project.save
+          puts "✅ Project saved"
+          EOF
+        shell: bash
 
       - name: Install iOS Pods
         run: |
