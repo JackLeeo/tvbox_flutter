@@ -7,8 +7,6 @@ enum PlayerType {
 }
 
 class PlayerProvider extends ChangeNotifier {
-  static final PlayerProvider instance = PlayerProvider._internal();
-  
   PlayerType _defaultPlayer = PlayerType.vlc;
   PlayerType get defaultPlayer => _defaultPlayer;
   
@@ -24,7 +22,8 @@ class PlayerProvider extends ChangeNotifier {
   int _skipIntroEnd = 0;
   int get skipIntroEnd => _skipIntroEnd;
   
-  PlayerProvider._internal();
+  // 公开构造函数
+  PlayerProvider();
   
   void setDefaultPlayer(PlayerType player) {
     _defaultPlayer = player;
