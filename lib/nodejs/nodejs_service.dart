@@ -39,60 +39,69 @@ class NodeJSService extends ChangeNotifier {
 
   // 数据源API
   Future<void> loadSource(String url) async {
-    return sendRequest('loadSource', {'url': url});
+    await sendRequest('loadSource', {'url': url});
   }
 
   Future<List<dynamic>> getHomeContent() async {
-    return sendRequest('getHomeContent', {});
+    final result = await sendRequest('getHomeContent', {});
+    return result as List<dynamic>;
   }
 
   Future<List<dynamic>> getCategoryContent(String categoryId, int page) async {
-    return sendRequest('getCategoryContent', {
+    final result = await sendRequest('getCategoryContent', {
       'categoryId': categoryId,
       'page': page,
     });
+    return result as List<dynamic>;
   }
 
   Future<Map<String, dynamic>> getVideoDetail(String videoId) async {
-    return sendRequest('getVideoDetail', {'videoId': videoId});
+    final result = await sendRequest('getVideoDetail', {'videoId': videoId});
+    return result as Map<String, dynamic>;
   }
 
   Future<String> getPlayUrl(String playId) async {
-    return sendRequest('getPlayUrl', {'playId': playId});
+    final result = await sendRequest('getPlayUrl', {'playId': playId});
+    return result as String;
   }
 
   Future<List<dynamic>> search(String keyword) async {
-    return sendRequest('search', {'keyword': keyword});
+    final result = await sendRequest('search', {'keyword': keyword});
+    return result as List<dynamic>;
   }
 
   // 网盘API
   Future<void> addCloudDrive(String type, Map<String, dynamic> config) async {
-    return sendRequest('addCloudDrive', {
+    await sendRequest('addCloudDrive', {
       'type': type,
       'config': config,
     });
   }
 
   Future<List<dynamic>> listCloudDriveFiles(String driveId, String path) async {
-    return sendRequest('listCloudDriveFiles', {
+    final result = await sendRequest('listCloudDriveFiles', {
       'driveId': driveId,
       'path': path,
     });
+    return result as List<dynamic>;
   }
 
   Future<String> getCloudDrivePlayUrl(String driveId, String fileId) async {
-    return sendRequest('getCloudDrivePlayUrl', {
+    final result = await sendRequest('getCloudDrivePlayUrl', {
       'driveId': driveId,
       'fileId': fileId,
     });
+    return result as String;
   }
 
   // 直播API
   Future<List<dynamic>> getLiveChannels() async {
-    return sendRequest('getLiveChannels', {});
+    final result = await sendRequest('getLiveChannels', {});
+    return result as List<dynamic>;
   }
 
   Future<String> getLivePlayUrl(String channelId) async {
-    return sendRequest('getLivePlayUrl', {'channelId': channelId});
+    final result = await sendRequest('getLivePlayUrl', {'channelId': channelId});
+    return result as String;
   }
 }
