@@ -1,0 +1,148 @@
+name: Build TrollStore TVBox
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout Code (with LFS)
+        uses: actions/checkout@v4
+        with:
+          lfs: true # 关键：拉取 Git LFS 中的大文件（NodeMobile 框架）
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.6'
+          channel: 'stable'
+          cache: true
+
+      - name: Install CocoaPods
+        run: gem install cocoapods
+
+      - name: Verify NodeMobile Framework (from LFS)
+        run: |
+          echo "=== 验证 Git LFS 中的 NodeMobile 框架 ==="
+          FRAMEWORK_PATH="ios/Frameworks/NodeMobile.xcframework"
+          
+          if [ ! -d "$FRAMEWORK_PATH" ]; then
+            echo "❌ 错误：未找到 NodeMobile.xcframework，请确认 Git LFS 文件已正确上传"
+            exit 1
+          fi
+
+          # 检查关键文件是否存在
+          if [ -f "$FRAMEWORK_PATH/ios-arm64/NodeMobile.framework/NodeMobile" ]; then
+            echo "✅ NodeMobile 主二进制文件存在"
+            ls -lh "$FRAMEWORK_PATH/ios-arm64/NodeMobile.framework/"
+          else
+            echo "❌ 错误：NodeMobile 二进制文件缺失"
+            exit 1
+          fi
+
+          echo "✅ 框架验证通过"
+
+      - name: Install Flutter Dependencies
+        run: |
+          echo "=== 安装 Flutter 依赖 ==="
+          flutter pub get
+          echo "✅ Flutter 依赖安装完成"
+
+      - name: Install iOS Pods
+        run: |
+          echo "=== 安装 iOS CocoaPods 依赖 ==="
+          cd ios
+          pod install --repo-update
+          cd ..
+          echo "✅ Pod 依赖安装完成"
+
+      - name: Build TVBox (TrollStore)
+        run: |
+          echo "=== 开始构建 ==="
+          cd ios
+          
+          # 清理旧缓存
+          rm -rf DerivedData
+          xcodebuild clean -workspace Runner.xcworkspace -scheme Runner -destination 'generic/platform=iOS' || true
+          
+          echo "=== 执行构建 ==="
+          set +o pipefail
+          xcodebuild build -configuration Release \
+            -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            -derivedDataPath ./DerivedData \
+            2>&1 | tee build.log
+          
+          BUILD_EXIT_CODE=${PIPESTATUS[0]}
+          
+          # 生成错误摘要
+          echo "=== 错误摘要 ===" > error_summary.txt
+          grep -n -B5 -A5 "error:" build.log >> error_summary.txt || echo "未发现错误" >> error_summary.txt
+          
+          if [ $BUILD_EXIT_CODE -eq 0 ]; then
+            echo "✅ 构建成功"
+            
+            # 查找 .app 文件
+            APP_PATH=$(find ./DerivedData -name "Runner.app" -type d | head -1)
+            
+            if [ -z "$APP_PATH" ]; then
+              echo "❌ 未找到 Runner.app"
+              exit 1
+            fi
+            
+            echo "APP 路径: $APP_PATH"
+            ls -la "$APP_PATH/"
+            
+            # 打包 IPA
+            echo "=== 打包 TrollStore IPA ==="
+            mkdir -p ../Build
+            TEMP_DIR=$(mktemp -d)
+            mkdir -p "$TEMP_DIR/Payload"
+            cp -r "$APP_PATH" "$TEMP_DIR/Payload/"
+            cd "$TEMP_DIR"
+            zip -r "$GITHUB_WORKSPACE/Build/tvbox-Flutter-TrollStore.ipa" Payload
+            cd "$GITHUB_WORKSPACE"
+            rm -rf "$TEMP_DIR"
+            
+            echo "✅ IPA 打包完成: ./Build/tvbox-Flutter-TrollStore.ipa"
+            ls -lh ../Build/
+            
+          else
+            echo "❌ 构建失败"
+            echo "=== 最后 100 行日志 ==="
+            tail -100 build.log
+            exit 1
+          fi
+          cd ..
+
+      - name: Upload IPA
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tvbox-Flutter-TrollStore
+          path: ./Build/tvbox-Flutter-TrollStore.ipa
+          retention-days: 30
+
+      - name: Upload Build Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            ./ios/build.log
+            ./ios/error_summary.txt
+          retention-days: 7
