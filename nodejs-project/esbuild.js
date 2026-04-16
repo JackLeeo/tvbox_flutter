@@ -1,12 +1,31 @@
 const esbuild = require('esbuild');
+const fs = require('fs');
+const {createHash} = require('crypto');
 
 esbuild.build({
   entryPoints: ['src/main.js'],
+  outfile: 'dist/main.js',
   bundle: true,
+  minify: true,
+  write: true,
+  format: 'cjs',
   platform: 'node',
   target: 'node18',
-  outfile: 'dist/main.js',
-  external: ['axios', 'vm', 'fs', 'path', 'http', 'https', 'url', 'querystring', 'crypto', 'buffer', 'stream', 'util', 'events', 'zlib'],
-  minify: true,
   sourcemap: false,
-}).catch(() => process.exit(1));
+  external: ['axios', 'fs', 'path', 'http', 'https', 'url', 'querystring', 'crypto', 'buffer', 'stream', 'util', 'events', 'zlib'],
+  plugins: [genMd5()],
+});
+
+function genMd5() {
+  return {
+    name: 'gen-output-file-md5',
+    setup(build) {
+      build.onEnd(async _ => {
+        const md5 = createHash('md5')
+          .update(fs.readFileSync('dist/main.js'))
+          .digest('hex');
+        fs.writeFileSync('dist/main.js.md5', md5);
+      });
+    },
+  };
+}
