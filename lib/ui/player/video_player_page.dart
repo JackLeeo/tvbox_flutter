@@ -4,8 +4,13 @@ import 'package:tvbox_flutter/providers/player_provider.dart';
 import 'package:tvbox_flutter/models/video_detail.dart';
 import 'package:tvbox_flutter/ui/player/vlc_player.dart';
 import 'package:tvbox_flutter/ui/player/system_player.dart';
-import 'package:tvbox_flutter/ui/player/exo_player.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
+
+enum PlayerType {
+  vlc,
+  system,
+  // exo, // 移除Exo支持
+}
 
 class VideoPlayerPage extends StatefulWidget {
   final String playUrl;
@@ -156,18 +161,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
           },
           onTap: () => setState(() => _showControls = !_showControls),
         );
-      case PlayerType.exo:
-        return ExoPlayerWidget(
-          url: widget.playUrl,
-          onPlayerStateChanged: (isPlaying, position, duration) {
-            setState(() {
-              _isPlaying = isPlaying;
-              _currentPosition = position;
-              _duration = duration;
-            });
-          },
-          onTap: () => setState(() => _showControls = !_showControls),
-        );
     }
   }
 
@@ -198,10 +191,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                     const PopupMenuItem(
                       value: PlayerType.system,
                       child: Text('系统播放器'),
-                    ),
-                    const PopupMenuItem(
-                      value: PlayerType.exo,
-                      child: Text('Exo播放器'),
                     ),
                   ],
                 ),
@@ -321,8 +310,13 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 
   String _formatDuration(double milliseconds) {
     final duration = Duration(milliseconds: milliseconds.toInt());
+    final hours = duration.inHours;
     final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
     final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '${duration.inHours}:$minutes:$seconds';
+    if (hours > 0) {
+      return '$hours:$minutes:$seconds';
+    } else {
+      return '$minutes:$seconds';
+    }
   }
 }
