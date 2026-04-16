@@ -1,6 +1,5 @@
 platform :ios, '14.0'
 
-# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
 project 'Runner', {
@@ -38,6 +37,35 @@ post_install do |installer|
     flutter_additional_ios_build_settings(target)
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
+    end
+  end
+
+  # 手动将 NodeMobile.xcframework 添加到 Runner target 的构建设置中
+  runner_target = installer.pods_project.targets.find { |t| t.name == 'Runner' }
+  if runner_target.nil?
+    # 如果不是 pods 项目中的 target，则直接修改主项目
+    project_path = 'Runner.xcodeproj'
+    project = Xcodeproj::Project.open(project_path)
+    runner_native_target = project.targets.first { |t| t.name == 'Runner' }
+    
+    framework_path = 'Frameworks/NodeMobile.xcframework'
+    if File.exist?(framework_path)
+      # 添加框架到项目
+      framework_ref = project.frameworks_group.new_file(framework_path)
+      
+      # 添加到 "Link Binary With Libraries"
+      build_phase = runner_native_target.build_phases.find { |bp| bp.is_a?(Xcodeproj::Project::Object::PBXFrameworksBuildPhase) }
+      build_phase.add_file_reference(framework_ref)
+      
+      # 添加到 "Embed Frameworks" (如果需要)
+      embed_phase = runner_native_target.copy_files_build_phases.find { |bp| bp.dst_subfolder_spec == '10' } # Frameworks
+      if embed_phase.nil?
+        embed_phase = runner_native_target.new_copy_files_build_phase('Embed Frameworks')
+        embed_phase.dst_subfolder_spec = '10'
+      end
+      embed_phase.add_file_reference(framework_ref)
+      
+      project.save
     end
   end
 end
