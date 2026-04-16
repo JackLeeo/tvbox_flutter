@@ -1,0 +1,16 @@
+{
+  "name": "tvbox_nodejs_runtime",
+  "version": "1.0.0",
+  "description": "TVBox Node.js runtime for spider execution",
+  "scripts": {
+    "product-install": "npm install --omit=dev --no-bin-links",
+    "build": "npm i && node esbuild.js && npm run product-install"
+  },
+  "dependencies": {
+    "axios": "^1.6.7",
+    "vm": "^0.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.2"
+  }
+}
