@@ -29,10 +29,7 @@ class PlayerSettingsPage extends StatelessWidget {
                       value: PlayerType.system,
                       child: Text('系统播放器'),
                     ),
-                    DropdownMenuItem(
-                      value: PlayerType.exo,
-                      child: Text('Exo播放器'),
-                    ),
+                    // 移除了不存在的 Exo 播放器选项
                   ],
                   onChanged: (value) {
                     if (value != null) {
@@ -80,8 +77,6 @@ class PlayerSettingsPage extends StatelessWidget {
         return 'VLC播放器';
       case PlayerType.system:
         return '系统播放器';
-      case PlayerType.exo:
-        return 'Exo播放器';
     }
   }
 }
