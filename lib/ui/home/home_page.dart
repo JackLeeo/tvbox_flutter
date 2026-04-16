@@ -9,6 +9,8 @@ import 'package:tvbox_flutter/ui/favorite/favorite_page.dart';
 import 'package:tvbox_flutter/ui/cloud_drive/cloud_drive_page.dart';
 import 'package:tvbox_flutter/ui/live/live_page.dart';
 import 'package:tvbox_flutter/ui/widgets/bottom_nav_bar.dart';
+import 'package:tvbox_flutter/ui/detail/detail_page.dart';
+import 'package:tvbox_flutter/models/video_item.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 
 class HomePage extends StatefulWidget {
@@ -200,7 +202,8 @@ class _HomeContentState extends State<HomeContent> with SingleTickerProviderStat
   }
 
   Widget _buildCategoryContent(Map<String, dynamic> category) {
-    final videos = category['videos'] ?? [];
+    final videosRaw = category['videos'] as List<dynamic>? ?? [];
+    final videos = videosRaw.map((json) => VideoItem.fromJson(json)).toList();
     
     return GridView.builder(
       padding: const EdgeInsets.all(8),
@@ -216,7 +219,12 @@ class _HomeContentState extends State<HomeContent> with SingleTickerProviderStat
         return VideoCard(
           video: video,
           onTap: () {
-            // 跳转到详情页
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => DetailPage(videoId: video.id),
+              ),
+            );
           },
         );
       },
