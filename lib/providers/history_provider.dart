@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tvbox_flutter/models/video_item.dart';
 import 'package:tvbox_flutter/constants/app_constants.dart';
+import 'dart:convert';
 
 class HistoryProvider extends ChangeNotifier {
   List<VideoItem> _history = [];
