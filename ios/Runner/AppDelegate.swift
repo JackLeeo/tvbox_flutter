@@ -7,7 +7,6 @@ import Flutter
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
-        // 注册MethodChannel
         let controller : FlutterViewController = window?.rootViewController as! FlutterViewController
         let nodeChannel = FlutterMethodChannel(name: "com.tvbox/nodejs", binaryMessenger: controller.binaryMessenger)
         
