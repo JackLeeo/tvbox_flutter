@@ -179,14 +179,15 @@ jobs:
 
       - name: Build TVBox (TrollStore)
         run: |
-          echo "=== 开始构建 ==="
+          echo "=== 1. Flutter 构建 (生成完整引擎) ==="
+          # 这一步会生成 Runner.app 所需的 Flutter 引擎和资源，并放入 ios/Flutter 目录
+          flutter build ios --release --no-codesign
+          
+          echo "=== 2. 清理 Xcode 缓存 ==="
           cd ios
           rm -rf DerivedData ArchivePath
           
-          echo "=== 清理 ==="
-          xcodebuild clean -workspace Runner.xcworkspace -scheme Runner -configuration Release
-          
-          echo "=== 归档 (Archive) ==="
+          echo "=== 3. 使用 xcodebuild archive 打包 (无签名) ==="
           set +o pipefail
           xcodebuild archive \
             -workspace Runner.xcworkspace \
@@ -205,7 +206,7 @@ jobs:
           if [ $BUILD_EXIT_CODE -eq 0 ]; then
             echo "✅ 归档成功"
             
-            # 从 .xcarchive 中提取 .app (已包含完整的 Flutter 引擎和资源)
+            # 从 .xcarchive 中提取 .app
             APP_PATH=$(find ./ArchivePath/Runner.xcarchive/Products/Applications -name "Runner.app" -type d | head -1)
             if [ -z "$APP_PATH" ]; then
               echo "❌ 未找到 Runner.app"
@@ -213,15 +214,15 @@ jobs:
             fi
             echo "APP 路径: $APP_PATH"
             
-            # 验证二进制文件大小
+            # 验证二进制文件大小（正常情况应大于 30 MB）
             BIN_SIZE=$(ls -l "$APP_PATH/Runner" | awk '{print $5}')
             echo "Runner 二进制大小: $BIN_SIZE 字节"
-            if [ "$BIN_SIZE" -lt 1000000 ]; then
-              echo "❌ 错误：二进制文件过小 ($BIN_SIZE)，构建可能不完整"
+            if [ "$BIN_SIZE" -lt 30000000 ]; then
+              echo "❌ 错误：二进制文件过小 ($BIN_SIZE 字节)，Flutter 引擎可能未正确嵌入"
               exit 1
             fi
             
-            echo "=== 打包 TrollStore IPA ==="
+            echo "=== 4. 打包 TrollStore IPA ==="
             mkdir -p ../Build
             TEMP_DIR=$(mktemp -d)
             mkdir -p "$TEMP_DIR/Payload"
