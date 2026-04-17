@@ -102,9 +102,14 @@ class NodeJSBridge: NSObject {
                     return
                 }
                 
-                // 正确的 C 函数指针获取方式
-                typealias NodeStartFunction = @convention(c) (Int32, UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) -> Int32
-                let node_start = unsafeBitCast(dlsym(UnsafeMutableRawPointer(bitPattern: -2), "node_start"), to: NodeStartFunction.self)
+                // 安全的 C 函数指针获取方式
+                guard let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "node_start") else {
+                    print("❌ node_start not found")
+                    DispatchQueue.main.async { completion(false) }
+                    return
+                }
+                typealias NodeStartFunc = @convention(c) (Int32, UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) -> Int32
+                let node_start = unsafeBitCast(sym, to: NodeStartFunc.self)
                 
                 let args = ["node", scriptPath]
                 var cArgs = args.map { strdup($0) }
@@ -164,7 +169,7 @@ class NodeJSBridge: NSObject {
         )
     }
     
-    // Objective‑C 异常捕获辅助方法
+    // Objective‑C 异常捕获
     private func catchException(_ block: @escaping () -> Void) -> NSException? {
         var result: NSException?
         let exceptionHandler = { (exception: NSException) in
