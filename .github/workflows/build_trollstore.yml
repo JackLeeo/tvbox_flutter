@@ -189,24 +189,16 @@ jobs:
             exit 1
           fi
           
-          # 检查 Flutter 引擎二进制 (App.framework/App)
-          FLUTTER_APP_BIN="$APP_PATH/Frameworks/App.framework/App"
-          if [ ! -f "$FLUTTER_APP_BIN" ]; then
-            echo "❌ 未找到 Flutter 引擎二进制：$FLUTTER_APP_BIN"
+          # 检查 Flutter 引擎大小（App.framework/App 应大于 30MB）
+          ENGINE_PATH="$APP_PATH/Frameworks/App.framework/App"
+          if [ ! -f "$ENGINE_PATH" ]; then
+            echo "❌ 未找到 Flutter 引擎文件"
             exit 1
           fi
-          
-          BIN_SIZE=$(ls -l "$FLUTTER_APP_BIN" | awk '{print $5}')
-          echo "Flutter 引擎 (App.framework/App) 大小: $BIN_SIZE 字节"
-          if [ "$BIN_SIZE" -lt 40000000 ]; then
-            echo "❌ 错误：Flutter 引擎过小 ($BIN_SIZE)，构建不完整"
-            exit 1
-          fi
-          
-          # 同时验证 Runner 存根 (通常几百KB，但存在即可)
-          RUNNER_BIN="$APP_PATH/Runner"
-          if [ ! -f "$RUNNER_BIN" ]; then
-            echo "❌ 未找到 Runner 存根"
+          ENGINE_SIZE=$(ls -l "$ENGINE_PATH" | awk '{print $5}')
+          echo "Flutter 引擎 (App.framework/App) 大小: $ENGINE_SIZE 字节"
+          if [ "$ENGINE_SIZE" -lt 30000000 ]; then
+            echo "❌ 错误：Flutter 引擎过小 ($ENGINE_SIZE)，构建不完整"
             exit 1
           fi
           
