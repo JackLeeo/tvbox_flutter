@@ -107,7 +107,26 @@ jobs:
           puts "✅ Project saved"
           EOF
         shell: bash
-
+      - name: Inspect NodeMobile.xcframework
+        run: |
+         echo "=== 检查 NodeMobile.xcframework 内容 ==="
+         FRAMEWORK_PATH="ios/Frameworks/NodeMobile.xcframework/ios-arm64/NodeMobile.framework"
+    
+         echo "1. 查看二进制文件信息："
+         file "$FRAMEWORK_PATH/NodeMobile"
+    
+         echo "2. 列出框架内的头文件："
+         ls -la "$FRAMEWORK_PATH/Headers/" || echo "无 Headers 目录"
+    
+         echo "3. 查看 Swift 模块文件："
+         ls -la "$FRAMEWORK_PATH/Modules/" || echo "无 Modules 目录"
+    
+         echo "4. 导出 Objective-C 类列表："
+         nm -g "$FRAMEWORK_PATH/NodeMobile" | grep "OBJC_CLASS_\$_" | sed 's/.*OBJC_CLASS_\$_//' | sort -u
+    
+         echo "5. 导出所有符号（过滤相关符号）："
+         nm -g "$FRAMEWORK_PATH/NodeMobile" | grep -i "node\|channel\|message" | head -20
+     
       - name: Install iOS Pods
         run: |
           echo "=== 安装 CocoaPods ==="
