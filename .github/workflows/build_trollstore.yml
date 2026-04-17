@@ -54,6 +54,49 @@ jobs:
             exit 1
           fi
 
+      - name: Analyze NodeMobile Symbols
+        run: |
+          echo "=== 分析 NodeMobile 框架导出的符号 ==="
+          FRAMEWORK_BIN="ios/Frameworks/NodeMobile.xcframework/ios-arm64/NodeMobile.framework/NodeMobile"
+          
+          echo "1. 查找消息通信相关符号："
+          SYMBOLS=(
+            "node_register_message_callback"
+            "node_send_message"
+            "node_start"
+            "node_stop"
+            "node_channel"
+            "NodeChannel"
+            "setMessageCallback"
+            "sendMessage"
+          )
+          
+          for sym in "${SYMBOLS[@]}"; do
+            if nm -gU "$FRAMEWORK_BIN" 2>/dev/null | grep -q "$sym"; then
+              echo "   ✅ 找到: $sym"
+            else
+              echo "   ❌ 未找到: $sym"
+            fi
+          done
+          
+          echo ""
+          echo "2. 列出所有导出的 Objective-C 类："
+          nm -gU "$FRAMEWORK_BIN" 2>/dev/null | grep " _OBJC_CLASS_\$_" | sed 's/.* _OBJC_CLASS_\$_//' || echo "   无 Objective-C 类"
+          
+          echo ""
+          echo "3. 列出所有导出的 C 函数（过滤 node_ 开头）："
+          nm -gU "$FRAMEWORK_BIN" 2>/dev/null | grep " T _node_" | sed 's/.* T _//' || echo "   无 node_ 开头的 C 函数"
+          
+          echo ""
+          echo "4. 检查框架内是否有 Swift 模块接口："
+          if [ -f "ios/Frameworks/NodeMobile.xcframework/ios-arm64/NodeMobile.framework/Modules/NodeMobile.swiftmodule/arm64-apple-ios.swiftinterface" ]; then
+            echo "   ✅ 存在 Swift 模块接口"
+            head -20 "ios/Frameworks/NodeMobile.xcframework/ios-arm64/NodeMobile.framework/Modules/NodeMobile.swiftmodule/arm64-apple-ios.swiftinterface"
+          else
+            echo "   ❌ 没有 Swift 模块接口"
+          fi
+        shell: bash
+
       - name: Build Node.js Project
         run: |
           echo "=== 构建 Node.js 运行时 ==="
