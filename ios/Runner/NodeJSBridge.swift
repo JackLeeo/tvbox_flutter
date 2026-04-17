@@ -1,112 +1,66 @@
 import Foundation
-import Network
 import NodeMobile
+import GCDWebServer
 
 class NodeJSBridge: NSObject {
     static let shared = NodeJSBridge()
     
     private var isRunning = false
     private var nodeServerPort: Int?
-    private let httpServerQueue = DispatchQueue(label: "com.tvbox.httpserver")
-    private var listener: NWListener?
-    private let nodeQueue = DispatchQueue(label: "com.tvbox.nodejs")
+    private let webServer = GCDWebServer()
+    private let queue = DispatchQueue(label: "com.tvbox.nodejs")
     
     private override init() {
         super.init()
-        startHttpServer()
+        setupWebServer()
     }
     
-    // MARK: - HTTP Server (监听 /onCatPawOpenPort 和 /msg)
-    private func startHttpServer() {
-        httpServerQueue.async { [weak self] in
-            do {
-                let listener = try NWListener(using: .tcp, on: 0)
-                self?.listener = listener
-                
-                listener.stateUpdateHandler = { state in
-                    switch state {
-                    case .ready:
-                        if let port = listener.port?.rawValue {
-                            print("✅ HTTP server started on port \(port)")
-                            // 保存端口到环境变量供 Node.js 读取
-                            setenv("DART_SERVER_PORT", "\(port)", 1)
-                        }
-                    case .failed(let error):
-                        print("❌ HTTP server failed: \(error)")
-                    default:
-                        break
-                    }
-                }
-                
-                listener.newConnectionHandler = { [weak self] connection in
-                    self?.handleConnection(connection)
-                }
-                
-                listener.start(queue: self?.httpServerQueue ?? .main)
-            } catch {
-                print("❌ Failed to start HTTP server: \(error)")
-            }
-        }
-    }
-    
-    private func handleConnection(_ connection: NWConnection) {
-        connection.start(queue: httpServerQueue)
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 4096) { [weak self] data, _, _, error in
-            if let data = data, let request = String(data: data, encoding: .utf8) {
-                self?.processHttpRequest(request, on: connection)
-            } else {
-                connection.cancel()
-            }
-        }
-    }
-    
-    private func processHttpRequest(_ request: String, on connection: NWConnection) {
-        let lines = request.components(separatedBy: "\r\n")
-        guard let firstLine = lines.first else {
-            connection.cancel()
-            return
-        }
-        let parts = firstLine.components(separatedBy: " ")
-        guard parts.count >= 2 else {
-            connection.cancel()
-            return
-        }
-        let path = parts[1]
-        
-        var responseBody = ""
-        if path.hasPrefix("/onCatPawOpenPort") {
-            if let range = path.range(of: "port=") {
-                let portStr = String(path[range.upperBound...])
-                if let port = Int(portStr) {
-                    self.nodeServerPort = port
+    // MARK: - HTTP Server (GCDWebServer)
+    private func setupWebServer() {
+        // 处理 /onCatPawOpenPort?port=xxxx
+        webServer.addDefaultHandler(forMethod: "GET", request: GCDWebServerRequest.self) { [weak self] request in
+            if request.path == "/onCatPawOpenPort" {
+                if let portStr = request.query?["port"], let port = Int(portStr) {
+                    self?.nodeServerPort = port
                     print("🐱 Node.js source server port: \(port)")
                 }
+                return GCDWebServerDataResponse(text: "OK")
             }
-            responseBody = "OK"
-        } else if path == "/msg" {
-            if let bodyRange = request.range(of: "\r\n\r\n") {
-                let body = String(request[bodyRange.upperBound...])
-                self.handleMessageFromNode(body)
-            }
-            responseBody = "OK"
+            return GCDWebServerResponse(statusCode: 404)
         }
         
-        let response = """
-        HTTP/1.1 200 OK\r
-        Content-Length: \(responseBody.utf8.count)\r
-        \r
-        \(responseBody)
-        """
-        connection.send(content: response.data(using: .utf8), completion: .contentProcessed({ _ in
-            connection.cancel()
-        }))
+        // 处理 /msg (接收来自 Node.js 的主动消息)
+        webServer.addHandler(forMethod: "POST", path: "/msg", request: GCDWebServerDataRequest.self) { [weak self] request in
+            if let dataRequest = request as? GCDWebServerDataRequest {
+                let body = String(data: dataRequest.data, encoding: .utf8) ?? ""
+                self?.handleMessageFromNode(body)
+            }
+            return GCDWebServerDataResponse(text: "OK")
+        }
+        
+        // 启动服务器（端口 0 表示自动分配）
+        do {
+            try webServer.start(options: [
+                GCDWebServerOption_Port: 0,
+                GCDWebServerOption_BindToLocalhost: true
+            ])
+            let port = webServer.port
+            setenv("DART_SERVER_PORT", "\(port)", 1)
+            print("✅ HTTP server started on port \(port)")
+        } catch {
+            print("❌ Failed to start HTTP server: \(error)")
+        }
     }
     
     // MARK: - Node.js Startup
     func startNodeJS(completion: @escaping (Bool) -> Void) {
-        nodeQueue.async { [weak self] in
-            guard let self = self else { return }
-            guard !self.isRunning else {
+        queue.async { [weak self] in
+            guard let self = self else {
+                DispatchQueue.main.async { completion(false) }
+                return
+            }
+            
+            if self.isRunning {
                 DispatchQueue.main.async { completion(true) }
                 return
             }
@@ -118,19 +72,19 @@ class NodeJSBridge: NSObject {
             }
             
             typealias NodeStartFunc = @convention(c) (Int32, UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) -> Int32
-            guard let node_start = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "node_start") else {
+            guard let node_start_ptr = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "node_start") else {
                 print("❌ node_start not found")
                 DispatchQueue.main.async { completion(false) }
                 return
             }
-            let startFunc = unsafeBitCast(node_start, to: NodeStartFunc.self)
+            let node_start = unsafeBitCast(node_start_ptr, to: NodeStartFunc.self)
             
             let args = ["node", scriptPath]
             var cArgs = args.map { strdup($0) }
             let argc = Int32(cArgs.count)
             
             DispatchQueue.global(qos: .userInitiated).async {
-                _ = startFunc(argc, &cArgs)
+                _ = node_start(argc, &cArgs)
                 for ptr in cArgs { free(ptr) }
                 self.isRunning = false
                 print("Node.js exited")
@@ -143,16 +97,18 @@ class NodeJSBridge: NSObject {
     }
     
     func stopNodeJS() {
-        nodeQueue.async { [weak self] in
-            self?.listener?.cancel()
+        queue.async { [weak self] in
+            self?.webServer.stop()
             self?.isRunning = false
         }
     }
     
+    // MARK: - Message Sending (HTTP to Node source server)
     func sendMessage(_ message: String, completion: ((Result<Any, Error>) -> Void)? = nil) {
-        nodeQueue.async { [weak self] in
-            guard let self = self, let nodePort = self.nodeServerPort else {
-                completion?(.failure(NSError(domain: "NodeJS", code: -1, userInfo: [NSLocalizedDescriptionKey: "Node service not ready"])))
+        queue.async { [weak self] in
+            guard let nodePort = self?.nodeServerPort else {
+                completion?(.failure(NSError(domain: "NodeJS", code: -1,
+                                             userInfo: [NSLocalizedDescriptionKey: "Node service port unknown"])))
                 return
             }
             
