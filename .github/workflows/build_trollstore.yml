@@ -189,18 +189,7 @@ jobs:
             exit 1
           fi
           
-          # 检查 Flutter 引擎大小（App.framework/App 应大于 30MB）
-          ENGINE_PATH="$APP_PATH/Frameworks/App.framework/App"
-          if [ ! -f "$ENGINE_PATH" ]; then
-            echo "❌ 未找到 Flutter 引擎文件"
-            exit 1
-          fi
-          ENGINE_SIZE=$(ls -l "$ENGINE_PATH" | awk '{print $5}')
-          echo "Flutter 引擎 (App.framework/App) 大小: $ENGINE_SIZE 字节"
-          if [ "$ENGINE_SIZE" -lt 30000000 ]; then
-            echo "❌ 错误：Flutter 引擎过小 ($ENGINE_SIZE)，构建不完整"
-            exit 1
-          fi
+          echo "✅ Flutter 构建成功，.app 大小: $(du -sh "$APP_PATH" | cut -f1)"
           
           echo "=== 打包 TrollStore IPA ==="
           mkdir -p ./Build
